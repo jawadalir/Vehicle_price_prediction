@@ -1,5 +1,7 @@
 # streamlit_app.py
 import streamlit as st
+# Clear cache at startup
+st.cache_data.clear()
 import numpy as np
 import pandas as pd
 import joblib
