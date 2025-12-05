@@ -141,7 +141,6 @@ st.markdown("---")
 
 # Check if model files exist - SIMPLIFIED
 model_files_exist = all([
-    os.path.exists("models\extra.joblib"),
     os.path.exists("models/scaler.joblib"),
     os.path.exists("models/features.joblib"),
     os.path.exists("output.json")
