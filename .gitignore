@@ -1,0 +1,26 @@
+# Ignore virtual environments
+myenv/
+venv/
+env/
+
+# Ignore Python cache
+__pycache__/
+*.pyc
+
+# Ignore large library files
+*.pyd
+*.dll
+*.so
+
+# System files
+.DS_Store
+
+# Ignore datasets
+*.csv
+*.xlsx
+*.parquet
+data/
+datasets/
+
+# Ignore model training outputs (optional)
+*.log
