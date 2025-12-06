@@ -385,17 +385,80 @@ elif co2_method == "Enter actual CO₂ emissions in g/km":
     st.success(f"✓ {co2_value} g/km converted to score: {co2_emissions:.2f}")
 
 # --------------------------------------------------------
-# 9️⃣ Default Values and Automatic Determinations
+# 9️⃣ Other Details - INCLUDING WARRANTY INPUT
 # --------------------------------------------------------
 
 st.header("6️⃣ Other Details")
 
-# Warranty
-warranty = 12  # Default 1 year warranty
-st.info(f"✓ Warranty set to default: {warranty} months")
+# Warranty Input
+st.subheader("Warranty Period")
+warranty = st.slider(
+    "Select warranty period (in months):",
+    min_value=0,
+    max_value=60,  # 5 years maximum
+    value=12,  # Default 1 year
+    step=1,
+    help="Warranty period remaining for the vehicle"
+)
+
+# Display warranty in years and months
+years = warranty // 12
+months = warranty % 12
+
+if warranty == 0:
+    st.info(f"✓ No warranty remaining")
+elif warranty < 12:
+    st.info(f"✓ Warranty: {warranty} months")
+else:
+    if months > 0:
+        st.info(f"✓ Warranty: {years} years and {months} months ({warranty} months total)")
+    else:
+        st.info(f"✓ Warranty: {years} years ({warranty} months total)")
+
+# Common warranty options for quick selection
+st.subheader("Quick Warranty Options")
+col1, col2, col3, col4, col5 = st.columns(5)
+
+with col1:
+    if st.button("No Warranty"):
+        warranty = 0
+        st.rerun()
+
+with col2:
+    if st.button("6 Months"):
+        warranty = 6
+        st.rerun()
+
+with col3:
+    if st.button("1 Year"):
+        warranty = 12
+        st.rerun()
+
+with col4:
+    if st.button("2 Years"):
+        warranty = 24
+        st.rerun()
+
+with col5:
+    if st.button("3 Years"):
+        warranty = 36
+        st.rerun()
 
 # Transmission is automatic by default
-st.info(f"✓ Transmission set to: Automatic (Rank: {transmission_ranking})")
+st.subheader("Transmission")
+transmission_options = {
+    "Automatic": 8,
+    "Manual": 6,
+    "Semi-automatic": 7
+}
+
+selected_transmission = st.selectbox(
+    "Select transmission type:",
+    options=list(transmission_options.keys())
+)
+
+transmission_ranking = transmission_options[selected_transmission]
+st.info(f"✓ Transmission set to: {selected_transmission} (Rank: {transmission_ranking})")
 
 # Determine car type automatically
 if 'brand' in locals() and 'model_name' in locals() and vehicle_year:
@@ -411,7 +474,8 @@ else:
 if st.button("🚀 PREDICT CAR PRICE", type="primary", use_container_width=True):
     
     # Validate all required inputs
-    if not all([brand, model_name, vehicle_year, co2_emissions is not None]):
+    required_fields = [brand, model_name, vehicle_year, co2_emissions is not None, warranty is not None]
+    if not all(required_fields):
         st.error("Please fill in all required fields!")
         st.stop()
     
@@ -495,12 +559,18 @@ if st.button("🚀 PREDICT CAR PRICE", type="primary", use_container_width=True)
             st.write(f"**Year:** {int(vehicle_year)} (Age: {int(car_age)} years)")
             st.write(f"**Mileage:** {mileage:,.0f} km")
             st.write(f"**Emission:** {emission_class.upper()} (Rank: {emission_rank})")
+            st.write(f"**Fuel:** {fuel_type.title()} (Rank: {fuel_rank})")
             
         with details_col2:
-            st.write(f"**Fuel:** {fuel_type.title()} (Rank: {fuel_rank})")
             st.write(f"**CO₂ Emissions:** {co2_emissions:.2f} (1-10 scale)")
-            st.write(f"**Transmission:** Automatic (Rank: {transmission_ranking})")
+            st.write(f"**Transmission:** {selected_transmission} (Rank: {transmission_ranking})")
             st.write(f"**Warranty:** {warranty} months")
+            if warranty > 0:
+                if warranty >= 12:
+                    st.write(f"  ({warranty//12} year{'s' if warranty//12 > 1 else ''}" + 
+                            (f" {warranty%12} month{'s' if warranty%12 > 1 else ''}" if warranty%12 > 0 else "") + ")")
+                else:
+                    st.write(f"  ({warranty} month{'s' if warranty > 1 else ''})")
             st.write(f"**Type:** Luxury={is_luxury}, Premium={is_premium}, Modern={is_modern}")
 
         # Display predicted price
@@ -526,6 +596,8 @@ if st.button("🚀 PREDICT CAR PRICE", type="primary", use_container_width=True)
             'mileage_km': mileage,
             'emission_class': emission_class.upper(),
             'fuel_type': fuel_type.title(),
+            'transmission': selected_transmission,
+            'warranty_months': warranty,
             'co2_emissions_score': float(co2_emissions),
             'predicted_price_eur': float(predicted_price),
             'model_type': model_type,
