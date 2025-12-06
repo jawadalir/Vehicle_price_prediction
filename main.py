@@ -12,30 +12,11 @@ import re
 import json
 import os
 from datetime import datetime
-from difflib import SequenceMatcher
 warnings.filterwarnings('ignore')
 
 # --------------------------------------------------------
 # 1️⃣ Helper Functions
 # --------------------------------------------------------
-
-def find_best_match(user_input, options_list, threshold=0.7):
-    """
-    Find the best match for user input from a list of options.
-    Returns the best match if similarity >= threshold, else None.
-    """
-    user_input = user_input.lower().strip()
-    best_match = None
-    best_score = 0
-
-    for option in options_list:
-        option_lower = option.lower().strip()
-        score = SequenceMatcher(None, user_input, option_lower).ratio()
-        if score > best_score:
-            best_score = score
-            best_match = option
-
-    return best_match if best_score >= threshold else None
 
 def parse_year(year_input):
     """
@@ -129,7 +110,6 @@ def estimate_co2_from_emission_fuel(emission_class, fuel_type):
         emissions = base_emissions
 
     # Normalize to 1-10 scale (higher = better/lower emissions)
-    # 0 g/km = 10, 200+ g/km = 1
     normalized = max(1.0, min(10.0, 10 - (emissions / 20)))
 
     return normalized
@@ -143,7 +123,7 @@ st.set_page_config(page_title="Car Price Prediction System", page_icon="🚗", l
 st.title("🚗 CAR PRICE PREDICTION SYSTEM")
 st.markdown("---")
 
-# Check if model files exist - SIMPLIFIED
+# Check if model files exist
 model_files_exist = all([
     os.path.exists("models/scaler.joblib"),
     os.path.exists("models/features.joblib"),
@@ -153,7 +133,6 @@ model_files_exist = all([
 if not model_files_exist:
     st.error("❌ Required model files not found!")
     st.info("Please ensure you have the following files:")
-    st.write("- models/best_model.joblib (single trained model)")
     st.write("- models/scaler.joblib (for feature scaling)")
     st.write("- models/features.joblib (feature names in correct order)")
     st.write("- output.json (for model rankings)")
@@ -178,7 +157,19 @@ def load_models():
         # Load trained model artifacts
         features = joblib.load("models/features.joblib")
         scaler = joblib.load("models/scaler.joblib")
-        best_model = joblib.load("cat_model.joblib")
+        
+        # Load the correct model file (check which one exists)
+        model_files = ["cat_model.joblib", "models/best_model.joblib", "best_model.joblib"]
+        best_model = None
+        for model_file in model_files:
+            if os.path.exists(model_file):
+                best_model = joblib.load(model_file)
+                st.info(f"Loaded model from: {model_file}")
+                break
+        
+        if best_model is None:
+            st.error("No model file found. Please ensure cat_model.joblib or best_model.joblib exists.")
+            st.stop()
         
         # Load model rankings from JSON file
         with open("output.json", "r") as f:
@@ -234,7 +225,7 @@ st.header("1️⃣ Brand Selection")
 
 available_brands = list(brand_ranking.keys())
 brand = st.selectbox(
-    f"Select Brand (available: {', '.join(available_brands)})",
+    "Select Brand",
     available_brands,
     format_func=lambda x: x.capitalize()
 )
@@ -244,8 +235,7 @@ if brand:
     st.success(f"✓ Selected: {brand.capitalize()} (Rank: {brand_rank})")
 
 # --------------------------------------------------------
-# 5.5️⃣ Display ALL available models for the selected brand
-#      AND LET USER SELECT FROM LIST (NO TYPING)
+# 5.5️⃣ Model Selection (IMPROVED - No manual typing)
 # --------------------------------------------------------
 
 st.header("2️⃣ Model Selection")
@@ -254,37 +244,30 @@ st.header("2️⃣ Model Selection")
 available_models = list(model_rankings.get(brand, {}).keys())
 
 if not available_models:
-    st.error(f"No models found for brand '{brand}' in database. Please update your model_rankings.")
+    st.error(f"No models found for brand '{brand}' in database.")
+    st.info("Available brands in database:")
+    for b in model_rankings.keys():
+        st.write(f"- {b.capitalize()}")
     st.stop()
 else:
     # Sort models alphabetically
     available_models_sorted = sorted(available_models)
-
-    # Display all available models in an expander
-    with st.expander(f"📋 View all {len(available_models_sorted)} available {brand.capitalize()} models"):
-        # Display in columns
-        cols_per_row = 4
-        models_chunks = [available_models_sorted[i:i + cols_per_row] 
-                         for i in range(0, len(available_models_sorted), cols_per_row)]
-        
-        for chunk in models_chunks:
-            cols = st.columns(cols_per_row)
-            for i, model in enumerate(chunk):
-                with cols[i]:
-                    st.text(model.title())
-
-    # Let user select model from dropdown instead of typing
-    st.subheader("Select Model From List")
+    
+    # Let user select model from dropdown
     model_name = st.selectbox(
         f"Select {brand.capitalize()} model:",
         options=available_models_sorted,
         format_func=lambda x: x.title(),
         key="model_select"
     )
-
+    
     # Once selected, get its rank
-    model_rank = model_rankings[brand][model_name]
-    st.success(f"✓ Selected model: {model_name.title()} (Rank: {model_rank:.4f})")
+    if model_name in model_rankings[brand]:
+        model_rank = model_rankings[brand][model_name]
+        st.success(f"✓ Selected model: {model_name.title()} (Rank: {model_rank:.4f})")
+    else:
+        st.error(f"Model '{model_name}' not found in rankings for brand '{brand}'")
+        st.stop()
 
 # --------------------------------------------------------
 # 6️⃣ Vehicle Details
@@ -301,12 +284,13 @@ with col2:
     mileage = st.number_input("Mileage (in km):", min_value=100, max_value=900000, value=50000, step=1000)
 
 # Parse year
+vehicle_year = None
 if year_input:
     vehicle_year = parse_year(year_input)
     if not pd.isna(vehicle_year):
         car_age = 2025 - vehicle_year
-        if 0 <= car_age <= 50:  # Reasonable car age
-            st.info(f"✓ Year: {vehicle_year} (Age: {car_age} years)")
+        if 0 <= car_age <= 50:
+            st.info(f"✓ Year: {int(vehicle_year)} (Age: {car_age} years)")
         else:
             st.error(f"Car age {car_age} years seems unrealistic (should be 0-50 years)")
             st.stop()
@@ -327,19 +311,12 @@ st.header("4️⃣ Emission & Fuel Details")
 st.subheader("Emission Class")
 available_emissions = list(emission_ranking.keys())
 
-# Create columns for better display
-emission_cols = st.columns(3)
-emission_choice = None
-
-for i, emission in enumerate(available_emissions):
-    with emission_cols[i % 3]:
-        if st.button(f"{emission.upper()} (Rank: {emission_ranking[emission]})", key=f"emission_{i}"):
-            emission_choice = emission
-
-# Also allow text input
-if not emission_choice:
-    emission_input = st.selectbox("Or select from dropdown:", available_emissions, format_func=lambda x: x.upper())
-    emission_choice = emission_input
+# Use selectbox instead of buttons for simplicity
+emission_choice = st.selectbox(
+    "Select Emission Class:",
+    options=available_emissions,
+    format_func=lambda x: x.upper()
+)
 
 if emission_choice:
     emission_class = emission_choice
@@ -350,19 +327,12 @@ if emission_choice:
 st.subheader("Fuel Type")
 available_fuels = list(fuel_ranking.keys())
 
-# Create columns for better display
-fuel_cols = st.columns(3)
-fuel_choice = None
-
-for i, fuel in enumerate(available_fuels):
-    with fuel_cols[i % 3]:
-        if st.button(f"{fuel.title()} (Rank: {fuel_ranking[fuel]})", key=f"fuel_{i}"):
-            fuel_choice = fuel
-
-# Also allow text input
-if not fuel_choice:
-    fuel_input = st.selectbox("Or select from dropdown:", available_fuels, format_func=lambda x: x.title())
-    fuel_choice = fuel_input
+# Use selectbox instead of buttons for simplicity
+fuel_choice = st.selectbox(
+    "Select Fuel Type:",
+    options=available_fuels,
+    format_func=lambda x: x.title()
+)
 
 if fuel_choice:
     fuel_type = fuel_choice
@@ -385,14 +355,15 @@ if 'emission_class' in locals() and 'fuel_type' in locals():
 co2_method = st.radio(
     "Choose CO₂ emissions input method:",
     [
-        "1. Use estimated value based on emission class and fuel type",
-        "2. Enter specific CO₂ emissions value (1-10 scale)",
-        "3. Enter actual CO₂ emissions in g/km"
+        "Use estimated value based on emission class and fuel type",
+        "Enter specific CO₂ emissions value (1-10 scale)",
+        "Enter actual CO₂ emissions in g/km"
     ]
 )
 
-if co2_method.startswith("1"):
-    # Use estimated value
+co2_emissions = None
+
+if co2_method == "Use estimated value based on emission class and fuel type":
     if 'estimated_co2' in locals():
         co2_emissions = estimated_co2
         st.success(f"✓ Using estimated CO₂ emissions: {co2_emissions:.2f}")
@@ -400,14 +371,12 @@ if co2_method.startswith("1"):
         st.warning("Please select emission class and fuel type first")
         st.stop()
 
-elif co2_method.startswith("2"):
-    # Enter specific CO₂ emissions value (1-10 scale)
+elif co2_method == "Enter specific CO₂ emissions value (1-10 scale)":
     co2_input = st.slider("Enter CO₂ emissions (1-10 scale):", 1.0, 10.0, 5.0, 0.1)
     co2_emissions = float(co2_input)
     st.success(f"✓ CO₂ emissions set to: {co2_emissions:.2f}")
 
-elif co2_method.startswith("3"):
-    # Enter actual CO₂ emissions in g/km
+elif co2_method == "Enter actual CO₂ emissions in g/km":
     co2_gkm = st.number_input("Enter CO₂ emissions in g/km (e.g., 120 for petrol car):", 
                              min_value=0, max_value=300, value=120)
     co2_value = float(co2_gkm)
@@ -429,9 +398,11 @@ st.info(f"✓ Warranty set to default: {warranty} months")
 st.info(f"✓ Transmission set to: Automatic (Rank: {transmission_ranking})")
 
 # Determine car type automatically
-if 'brand' in locals() and 'model_name' in locals() and 'vehicle_year' in locals():
+if 'brand' in locals() and 'model_name' in locals() and vehicle_year:
     is_luxury, is_premium, is_modern = determine_car_type(brand, model_name, vehicle_year)
     st.info(f"✓ Car type determined: Luxury={is_luxury}, Premium={is_premium}, Modern={is_modern}")
+else:
+    is_luxury, is_premium, is_modern = 0, 0, 0
 
 # --------------------------------------------------------
 # 🔟 Prepare Test Car Data
@@ -439,9 +410,14 @@ if 'brand' in locals() and 'model_name' in locals() and 'vehicle_year' in locals
 
 if st.button("🚀 PREDICT CAR PRICE", type="primary", use_container_width=True):
     
+    # Validate all required inputs
+    if not all([brand, model_name, vehicle_year, co2_emissions is not None]):
+        st.error("Please fill in all required fields!")
+        st.stop()
+    
     with st.spinner("Processing input data..."):
         
-        # Prepare test car data - EXACTLY the same as before
+        # Prepare test car data
         test_car = {
             'brand_rank': float(brand_rank),
             'model_rank': float(model_rank),
@@ -458,13 +434,10 @@ if st.button("🚀 PREDICT CAR PRICE", type="primary", use_container_width=True)
             'is_modern': int(is_modern)
         }
 
-        # --------------------------------------------------------
-        # 1️⃣1️⃣ Feature Engineering (EXACTLY the same as before)
-        # --------------------------------------------------------
-
+        # Feature Engineering
         df = pd.DataFrame([test_car])
 
-        # 1. Basic mileage/age features (EXACTLY the same)
+        # 1. Basic mileage/age features
         df['mileage_per_year'] = df['mileage'] / (df['car_age'] + 0.5)
         df['log_mileage'] = np.log1p(df['mileage'])
         df['log_mileage_per_year'] = np.log1p(df['mileage_per_year'])
@@ -473,26 +446,22 @@ if st.button("🚀 PREDICT CAR PRICE", type="primary", use_container_width=True)
         df['age_mileage_ratio'] = df['car_age'] / (df['mileage'] + 1)
         df['age_mileage_interaction'] = df['car_age'] * df['log_mileage']
 
-        # 2. Brand/model features (EXACTLY the same)
+        # 2. Brand/model features
         df['brand_model_product'] = df['brand_rank'] * df['model_rank']
         df['brand_model_ratio'] = df['brand_rank'] / (df['model_rank'] + 1e-6)
         df['brand_model_diff'] = df['brand_rank'] - df['model_rank']
         df['brand_rank_sq'] = df['brand_rank'] ** 2
         df['model_rank_sq'] = df['model_rank'] ** 2
 
-        # 3. Emission features (EXACTLY the same)
+        # 3. Emission features
         df['emission_brand_interaction'] = df['emission_rank'] * df['brand_rank']
         df['emission_model_interaction'] = df['emission_rank'] * df['model_rank']
         df['emission_age_interaction'] = df['emission_rank'] / (df['car_age'] + 1)
 
-        # 4. Frequency features - use neutral/default values (EXACTLY the same)
+        # 4. Frequency features - use neutral/default values
         df['brand_count_norm'] = 0.5
         df['model_count_norm'] = 0.5
         df['brand_model_count_norm'] = 0.5
-
-        # --------------------------------------------------------
-        # 1️⃣2️⃣ Fill Missing Features and Scale (SIMILAR but simpler)
-        # --------------------------------------------------------
 
         # Fill missing features with 0
         for feature in features:
@@ -505,21 +474,12 @@ if st.button("🚀 PREDICT CAR PRICE", type="primary", use_container_width=True)
         # Scale features
         X_scaled = scaler.transform(X)
 
-        # --------------------------------------------------------
-        # 1️⃣3️⃣ Make Prediction with Single Model
-        # --------------------------------------------------------
-
-        with st.spinner("Making prediction with single model..."):
-            # Make prediction using the single best model
-            pred_log = best_model.predict(X_scaled)[0]  # Log space prediction
-            
-            # Convert from log to euros
+        # Make prediction
+        with st.spinner("Making prediction..."):
+            pred_log = best_model.predict(X_scaled)[0]
             predicted_price = np.expm1(pred_log)
 
-        # --------------------------------------------------------
-        # 1️⃣4️⃣ Display Results
-        # --------------------------------------------------------
-
+        # Display Results
         st.markdown("---")
         st.markdown("## 🎯 PREDICTION RESULTS")
         st.markdown("---")
@@ -558,10 +518,7 @@ if st.button("🚀 PREDICT CAR PRICE", type="primary", use_container_width=True)
         
         st.warning(f"**Estimated Price Range:** €{price_range_low:,.2f} - €{price_range_high:,.2f}")
 
-        # --------------------------------------------------------
         # Save prediction to file
-        # --------------------------------------------------------
-        
         prediction_data = {
             'brand': brand.capitalize(),
             'model': model_name.title(),
