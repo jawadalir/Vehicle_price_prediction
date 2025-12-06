@@ -245,6 +245,7 @@ if brand:
 
 # --------------------------------------------------------
 # 5.5️⃣ Display ALL available models for the selected brand
+#      AND LET USER SELECT FROM LIST (NO TYPING)
 # --------------------------------------------------------
 
 st.header("2️⃣ Model Selection")
@@ -253,19 +254,18 @@ st.header("2️⃣ Model Selection")
 available_models = list(model_rankings.get(brand, {}).keys())
 
 if not available_models:
-    st.warning(f"No models found for brand '{brand}' in database.")
-    model_rank = 1.0  # Default value
-    model_name = st.text_input("Enter model name:").strip().lower()
+    st.error(f"No models found for brand '{brand}' in database. Please update your model_rankings.")
+    st.stop()
 else:
+    # Sort models alphabetically
+    available_models_sorted = sorted(available_models)
+
     # Display all available models in an expander
-    with st.expander(f"📋 View all {len(available_models)} available {brand.capitalize()} models"):
-        # Sort models alphabetically
-        available_models_sorted = sorted(available_models)
-        
+    with st.expander(f"📋 View all {len(available_models_sorted)} available {brand.capitalize()} models"):
         # Display in columns
         cols_per_row = 4
         models_chunks = [available_models_sorted[i:i + cols_per_row] 
-                        for i in range(0, len(available_models_sorted), cols_per_row)]
+                         for i in range(0, len(available_models_sorted), cols_per_row)]
         
         for chunk in models_chunks:
             cols = st.columns(cols_per_row)
@@ -273,89 +273,18 @@ else:
                 with cols[i]:
                     st.text(model.title())
 
-    # Ask for model name
-    st.subheader("Enter Model Name")
-    st.info(f"Examples: {', '.join(available_models[:5])}")
-    
-    model_input = st.text_input(f"Enter {brand.capitalize()} model name:", key="model_input")
-    
-    if model_input:
-        model_input = model_input.strip().lower()
-        
-        # Special handling for common model name variations
-        model_variations = {
-            # Mercedes variations
-            'a class': 'a-class', 'a klasse': 'a-class', 'a-klasse': 'a-class',
-            'b class': 'b-class', 'b klasse': 'b-class', 'b-klasse': 'b-class',
-            'c class': 'c-class', 'c klasse': 'c-class', 'c-klasse': 'c-class',
-            'e class': 'e-class', 'e klasse': 'e-class', 'e-klasse': 'e-class',
-            's class': 's-class', 's klasse': 's-class', 's-klasse': 's-class',
+    # Let user select model from dropdown instead of typing
+    st.subheader("Select Model From List")
+    model_name = st.selectbox(
+        f"Select {brand.capitalize()} model:",
+        options=available_models_sorted,
+        format_func=lambda x: x.title(),
+        key="model_select"
+    )
 
-            # BMW variations
-            '1 series': '1 series', '1 serie': '1 series', '1-reeks': '1 series',
-            '2 series': '2 series', '2 serie': '2 series', '2-reeks': '2 series',
-            '3 series': '3 series', '3 serie': '3 series', '3-reeks': '3 series',
-            '4 series': '4 series', '4 serie': '4 series', '4-reeks': '4 series',
-            '5 series': '5 series', '5 serie': '5 series', '5-reeks': '5 series',
-            '7 series': '7 series', '7 serie': '7 series', '7-reeks': '7 series',
-            'x1': 'x1', 'x2': 'x2', 'x3': 'x3', 'x4': 'x4', 'x5': 'x5', 'x6': 'x6',
-
-            # Audi variations
-            'a1': 'a1', 'a3': 'a3', 'a4': 'a4', 'a5': 'a5', 'a6': 'a6', 'a7': 'a7', 'a8': 'a8',
-            'q2': 'q2', 'q3': 'q3', 'q4': 'q4', 'q5': 'q5', 'q7': 'q7', 'q8': 'q8',
-
-            # Volkswagen variations
-            'golf': 'golf', 'polo': 'polo', 'passat': 'passat', 'tiguan': 'tiguan',
-            't-roc': 't-roc', 't-cross': 't-cross', 'taigo': 'taigo',
-
-            # Ford variations
-            'fiesta': 'fiesta', 'focus': 'focus', 'kuga': 'kuga', 'mustang': 'mustang',
-            'puma': 'puma', 'mondeo': 'mondeo',
-
-            # Volvo variations
-            'xc40': 'xc40', 'xc60': 'xc60', 'xc90': 'xc90',
-            's60': 's60', 's90': 's90', 'v60': 'v60', 'v90': 'v90',
-
-            # Peugeot variations
-            '208': '208', '2008': '2008', '308': '308', '3008': '3008',
-            '508': '508', '5008': '5008',
-
-            # Kia variations
-            'picanto': 'picanto', 'rio': 'rio', 'ceed': 'ceed', 'proceed': 'proceed',
-            'sportage': 'sportage', 'niro': 'niro', 'stonic': 'stonic', 'xceed': 'xceed'
-        }
-
-        # Check for common variations first
-        normalized_input = model_input.lower()
-        if normalized_input in model_variations:
-            normalized_input = model_variations[normalized_input]
-
-        best_match = find_best_match(normalized_input, available_models, threshold=0.7)
-
-        if best_match:
-            model_name = best_match
-            model_rank = model_rankings[brand][model_name]
-            st.success(f"✓ Recognized as: {model_name.title()} (Rank: {model_rank:.4f})")
-        else:
-            st.error(f"Model '{model_input}' not recognized.")
-            
-            # Show closest matches
-            st.subheader("Closest matches found:")
-            
-            # Find and show top 5 closest matches
-            similarity_scores = []
-            for option in available_models:
-                score = SequenceMatcher(None, normalized_input, option.lower()).ratio()
-                similarity_scores.append((option, score))
-
-            # Sort by similarity score (highest first)
-            similarity_scores.sort(key=lambda x: x[1], reverse=True)
-
-            # Show top 5 matches
-            for i, (option, score) in enumerate(similarity_scores[:5]):
-                st.write(f"{i+1}. {option.title()} (similarity: {score:.1%})")
-            
-            st.stop()
+    # Once selected, get its rank
+    model_rank = model_rankings[brand][model_name]
+    st.success(f"✓ Selected model: {model_name.title()} (Rank: {model_rank:.4f})")
 
 # --------------------------------------------------------
 # 6️⃣ Vehicle Details
