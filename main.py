@@ -116,7 +116,7 @@ def estimate_co2_from_emission_fuel(emission_class, fuel_type):
 
     return normalized
 
-def get_filtered_data(brand, model, emission_class, car_age, min_mileage=None, max_mileage=None, original_dataset_path="original_dataset.csv"):
+def get_filtered_data(brand, model, emission_class, car_age, min_mileage=None, max_mileage=None, original_dataset_path="FilterCars.csv"):
     """
     Filter the original dataset based on user inputs and return filtered DataFrame.
     """
@@ -127,7 +127,7 @@ def get_filtered_data(brand, model, emission_class, car_age, min_mileage=None, m
             return None
         
         # Load original dataset
-        df = pd.read_csv(original_dataset_path)
+        df = pd.read_csv("FilterCars.csv")
         
         # Apply filters
         # Filter by brand
@@ -193,7 +193,7 @@ if not model_files_exist:
     st.stop()
 
 # Check if original dataset exists for filtering feature
-original_dataset_exists = os.path.exists("original_dataset.csv")
+original_dataset_exists = os.path.exists("FilterCars.csv")
 if not original_dataset_exists:
     st.warning("⚠️ Original dataset not found. CSV filtering feature will be disabled.")
     st.info("To enable CSV filtering, please place 'original_dataset.csv' in the same directory.")
