@@ -12,6 +12,8 @@ import re
 import json
 import os
 from datetime import datetime
+import base64
+from io import StringIO
 warnings.filterwarnings('ignore')
 
 # --------------------------------------------------------
@@ -114,6 +116,58 @@ def estimate_co2_from_emission_fuel(emission_class, fuel_type):
 
     return normalized
 
+def get_filtered_data(brand, model, emission_class, car_age, min_mileage=None, max_mileage=None, original_dataset_path="original_dataset.csv"):
+    """
+    Filter the original dataset based on user inputs and return filtered DataFrame.
+    """
+    try:
+        # Check if original dataset exists
+        if not os.path.exists(original_dataset_path):
+            st.warning(f"Original dataset not found at: {original_dataset_path}")
+            return None
+        
+        # Load original dataset
+        df = pd.read_csv(original_dataset_path)
+        
+        # Apply filters
+        # Filter by brand
+        if brand:
+            df = df[df['general_information__brand'].str.lower() == brand.lower()]
+        
+        # Filter by model
+        if model:
+            df = df[df['general_information__model'].str.lower() == model.lower()]
+        
+        # Filter by emission class
+        if emission_class:
+            df = df[df['energy_consumption__emission_class'].str.lower() == emission_class.lower()]
+        
+        # Filter by car age (exact match)
+        if car_age is not None:
+            df = df[df['car_age'] == car_age]
+        
+        # Filter by mileage range
+        if min_mileage is not None:
+            df = df[df['mileage'] >= min_mileage]
+        
+        if max_mileage is not None:
+            df = df[df['mileage'] <= max_mileage]
+        
+        return df
+    
+    except Exception as e:
+        st.error(f"Error filtering data: {e}")
+        return None
+
+def create_download_link(df, filename="filtered_data.csv"):
+    """
+    Create a download link for a DataFrame as CSV.
+    """
+    csv = df.to_csv(index=False)
+    b64 = base64.b64encode(csv.encode()).decode()
+    href = f'<a href="data:file/csv;base64,{b64}" download="{filename}">📥 Download Filtered CSV File</a>'
+    return href
+
 # --------------------------------------------------------
 # 2️⃣ Initialize Streamlit App
 # --------------------------------------------------------
@@ -137,6 +191,12 @@ if not model_files_exist:
     st.write("- models/features.joblib (feature names in correct order)")
     st.write("- output.json (for model rankings)")
     st.stop()
+
+# Check if original dataset exists for filtering feature
+original_dataset_exists = os.path.exists("original_dataset.csv")
+if not original_dataset_exists:
+    st.warning("⚠️ Original dataset not found. CSV filtering feature will be disabled.")
+    st.info("To enable CSV filtering, please place 'original_dataset.csv' in the same directory.")
 
 # --------------------------------------------------------
 # 3️⃣ Load Model Artifacts and Data
@@ -468,6 +528,70 @@ else:
     is_luxury, is_premium, is_modern = 0, 0, 0
 
 # --------------------------------------------------------
+# 🔟 CSV FILTERING OPTIONS
+# --------------------------------------------------------
+
+st.header("📊 CSV Filtering Options")
+
+# Only show filtering options if original dataset exists
+if original_dataset_exists:
+    st.subheader("Filter Original Dataset")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("**Filter Settings:**")
+        # Mileage range filter
+        st.markdown("**Mileage Range (Optional):**")
+        use_mileage_filter = st.checkbox("Apply mileage filter", value=False)
+        
+        if use_mileage_filter:
+            min_mileage = st.number_input("Minimum mileage (km):", min_value=0, value=40000, step=1000)
+            max_mileage = st.number_input("Maximum mileage (km):", min_value=0, value=100000, step=1000)
+        else:
+            min_mileage = None
+            max_mileage = None
+        
+        # Exact age filter
+        exact_age_filter = st.checkbox("Filter by exact age", value=True)
+        if exact_age_filter:
+            filter_age = car_age
+            st.info(f"Will filter by exact age: {filter_age} years")
+        else:
+            filter_age = None
+    
+    with col2:
+        st.markdown("**Filter Preview:**")
+        st.info(f"**Brand:** {brand.capitalize()}")
+        st.info(f"**Model:** {model_name.title()}")
+        st.info(f"**Emission Class:** {emission_class.upper()}")
+        st.info(f"**Car Age:** {car_age} years")
+        if use_mileage_filter:
+            st.info(f"**Mileage Range:** {min_mileage:,} - {max_mileage:,} km")
+        
+        # Show what will be filtered
+        filter_criteria = []
+        filter_criteria.append(f"Brand = '{brand.capitalize()}'")
+        filter_criteria.append(f"Model = '{model_name.title()}'")
+        filter_criteria.append(f"Emission Class = '{emission_class.upper()}'")
+        filter_criteria.append(f"Car Age = {car_age} years")
+        if use_mileage_filter:
+            filter_criteria.append(f"Mileage ≥ {min_mileage:,} km")
+            if max_mileage:
+                filter_criteria.append(f"Mileage ≤ {max_mileage:,} km")
+        
+        st.markdown("**Filter Criteria:**")
+        for criterion in filter_criteria:
+            st.write(f"• {criterion}")
+    
+    # Add a toggle to enable/disable filtering feature
+    enable_filtering = st.checkbox("Enable CSV filtering feature", value=True)
+    
+else:
+    enable_filtering = False
+    st.warning("CSV filtering is disabled because 'original_dataset.csv' was not found.")
+
+# --------------------------------------------------------
 # 🔟 Prepare Test Car Data
 # --------------------------------------------------------
 
@@ -588,6 +712,75 @@ if st.button("🚀 PREDICT CAR PRICE", type="primary", use_container_width=True)
         
         st.warning(f"**Estimated Price Range:** €{price_range_low:,.2f} - €{price_range_high:,.2f}")
 
+        # --------------------------------------------------------
+        # CSV FILTERING AND DOWNLOAD
+        # --------------------------------------------------------
+        
+        if original_dataset_exists and enable_filtering:
+            st.markdown("---")
+            st.subheader("📊 Filtered Dataset")
+            
+            with st.spinner("Filtering original dataset..."):
+                # Apply filters based on user inputs
+                filtered_df = get_filtered_data(
+                    brand=brand,
+                    model=model_name,
+                    emission_class=emission_class,
+                    car_age=car_age if exact_age_filter else None,
+                    min_mileage=min_mileage if use_mileage_filter else None,
+                    max_mileage=max_mileage if use_mileage_filter else None
+                )
+                
+                if filtered_df is not None and not filtered_df.empty:
+                    st.success(f"✅ Found {len(filtered_df)} matching records in the dataset")
+                    
+                    # Display filtered data preview
+                    st.markdown("**Preview of filtered data:**")
+                    st.dataframe(filtered_df.head(10), use_container_width=True)
+                    
+                    # Show basic statistics
+                    st.markdown("**Filtered Data Statistics:**")
+                    stats_col1, stats_col2, stats_col3 = st.columns(3)
+                    
+                    with stats_col1:
+                        st.metric("Total Records", len(filtered_df))
+                    
+                    with stats_col2:
+                        if 'price' in filtered_df.columns:
+                            avg_price = filtered_df['price'].mean()
+                            st.metric("Average Price", f"€{avg_price:,.2f}")
+                    
+                    with stats_col3:
+                        if 'mileage' in filtered_df.columns:
+                            avg_mileage = filtered_df['mileage'].mean()
+                            st.metric("Average Mileage", f"{avg_mileage:,.0f} km")
+                    
+                    # Create download link
+                    st.markdown("---")
+                    st.subheader("📥 Download Filtered Data")
+                    
+                    # Generate filename based on filters
+                    filename = f"filtered_{brand}_{model_name}_{emission_class}_age{car_age}.csv"
+                    
+                    # Create download button
+                    csv = filtered_df.to_csv(index=False)
+                    st.download_button(
+                        label="📥 Download CSV",
+                        data=csv,
+                        file_name=filename,
+                        mime="text/csv",
+                        help="Download the filtered dataset as CSV"
+                    )
+                    
+                    # Also show the direct link
+                    st.markdown(create_download_link(filtered_df, filename), unsafe_allow_html=True)
+                    
+                elif filtered_df is not None and filtered_df.empty:
+                    st.warning("No matching records found in the dataset with the specified filters.")
+                    st.info("Try relaxing some filter criteria (e.g., remove mileage filter or exact age filter).")
+                else:
+                    st.error("Could not filter the dataset. Please check if the original dataset is in the correct format.")
+
         # Save prediction to file
         prediction_data = {
             'brand': brand.capitalize(),
@@ -632,6 +825,7 @@ st.markdown(
     <div style='text-align: center; color: gray;'>
         <p>🚗 Car Price Prediction System • Using Single Best Model</p>
         <p><small>Features engineered to match ensemble model training</small></p>
+        <p><small>📊 CSV Filtering: {'Enabled' if original_dataset_exists and enable_filtering else 'Disabled'}</small></p>
     </div>
     """,
     unsafe_allow_html=True
