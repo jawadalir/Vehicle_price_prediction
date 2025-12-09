@@ -55,7 +55,7 @@ def parse_year(year_input):
 
     return np.nan
 
-def get_filtered_data(brand, model, emission_class, mileage_limit, car_age, original_dataset_path="FilterCars.csv"):
+def get_filtered_data(brand, model, emission_class, mileage_limit, car_age, original_dataset_path="dataset_new.csv"):
     """
     Filter the original dataset based on user inputs and return filtered DataFrame.
     Now includes mileage (≤) and age (±1 year) filters.
@@ -245,19 +245,19 @@ st.title("🚗 CAR PRICE PREDICTION SYSTEM")
 st.markdown("---")
 
 # Check if model files exist
-model_files_exist = os.path.exists("catboost_car_price_model.cbm")
+model_files_exist = os.path.exists("catmodel.cbm")
 
 if not model_files_exist:
     st.error("❌ Model file not found!")
     st.info("Please ensure you have the following file:")
-    st.write("- catboost_car_price_model.cbm (CatBoost model)")
+    st.write("- cat_model.cbm (CatBoost model)")
     st.stop()
 
 # Check if original dataset exists for filtering feature
-original_dataset_exists = os.path.exists("FilterCars.csv")
+original_dataset_exists = os.path.exists("dataset_new.csv")
 if not original_dataset_exists:
     st.warning("⚠️ Original dataset not found. CSV filtering feature will be disabled.")
-    st.info("To enable CSV filtering, please place 'FilterCars.csv' in the same directory.")
+    st.info("To enable CSV filtering, please place 'dataset.csv' in the same directory.")
 
 # --------------------------------------------------------
 # 3️⃣ Load Model
@@ -272,7 +272,7 @@ def load_catboost_model():
         
         # Load the model
         model = CatBoostRegressor()
-        model.load_model("catboost_car_price_model.cbm")
+        model.load_model("catmodel.cbm")
         
         # Try to get feature names from the model
         try:
@@ -526,6 +526,7 @@ if enable_filtering:
         emission_class=emission_class,
         mileage_limit=mileage,  # Use selected mileage as limit
         car_age=car_age  # Use calculated car age
+
     )
     
     if filtered_df is not None and not filtered_df.empty:
@@ -595,13 +596,13 @@ if enable_filtering:
         st.warning(f"- Brand: {brand_filter.title()}")
         st.warning(f"- Model: {model_filter.title()}")
         st.warning(f"- Emission Class: {emission_class}")
-        st.warning(f"- Maximum Mileage: ≤ {mileage:,} km")
+        st.warning(f"- Maximum Mileage:  {mileage:,} km")
         st.warning(f"- Car Age: {car_age} years (±1 year)")
         st.info("Try relaxing the mileage or age filters.")
     else:
         st.error("Could not filter the dataset. Please check if the original dataset is in the correct format.")
 else:
-    st.warning("CSV filtering is disabled because 'FilterCars.csv' was not found.")
+    st.warning("CSV filtering is disabled because 'dataset.csv' was not found.")
 
 # --------------------------------------------------------
 # 🔟 PREDICTION
