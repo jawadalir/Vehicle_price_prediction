@@ -55,9 +55,10 @@ def parse_year(year_input):
 
     return np.nan
 
-def get_filtered_data(brand, model, emission_class, car_age, min_mileage=None, max_mileage=None, original_dataset_path="FilterCars.csv"):
+def get_filtered_data(brand, model, emission_class, original_dataset_path="FilterCars.csv"):
     """
-    Filter the original dataset based on user inputs and return filtered DataFrame.
+    Filter the original dataset based on brand, model, and emission class only.
+    Returns filtered DataFrame.
     """
     try:
         # Check if original dataset exists
@@ -68,7 +69,7 @@ def get_filtered_data(brand, model, emission_class, car_age, min_mileage=None, m
         # Load original dataset
         df = pd.read_csv(original_dataset_path)
         
-        # Apply filters
+        # Apply filters - only brand, model, and emission class
         # Filter by brand
         if brand:
             df = df[df['general_information__brand'].str.lower() == brand.lower()]
@@ -80,14 +81,6 @@ def get_filtered_data(brand, model, emission_class, car_age, min_mileage=None, m
         # Filter by emission class
         if emission_class:
             df = df[df['energy_consumption__emission_class'].str.lower() == emission_class.lower()]
-        
-        # Filter by car age (exact match)
-        if car_age is not None:
-            df = df[df['car_age'] == car_age]
-        
-        # Filter by mileage range - FIXED: Only less than or equal to selected mileage
-        if max_mileage is not None:
-            df = df[df['mileage'] <= max_mileage]
         
         return df
     
@@ -497,69 +490,83 @@ transmission = transmission_options[selected_transmission]
 st.info(f"✓ Transmission set to: {selected_transmission}")
 
 # --------------------------------------------------------
-# 9️⃣ CSV FILTERING OPTIONS
+# 9️⃣ CSV FILTERING OPTIONS - UPDATED
 # --------------------------------------------------------
 
 st.header("📊 CSV Filtering Options")
 
-# Only show filtering options if original dataset exists
-if original_dataset_exists:
+# Enable filtering by default if dataset exists
+enable_filtering = original_dataset_exists
+
+if enable_filtering:
     st.subheader("Filter Original Dataset")
     
-    col1, col2 = st.columns(2)
+    # Extract brand and model from car_type
+    brand_filter = car_type.split()[0]
+    model_filter = " ".join(car_type.split()[1:])
     
-    with col1:
-        st.markdown("**Filter Settings:**")
-        # Mileage range filter - FIXED: Only show max mileage option
-        st.markdown("**Maximum Mileage (Optional):**")
-        use_mileage_filter = st.checkbox("Apply mileage filter", value=True)
-        
-        if use_mileage_filter:
-            max_mileage = st.number_input("Maximum mileage (km):", 
-                                         min_value=0, 
-                                         value=int(mileage), 
-                                         step=1000,
-                                         help="Only show cars with mileage less than or equal to this value")
-        else:
-            max_mileage = None
-        
-        # Exact age filter
-        exact_age_filter = st.checkbox("Filter by exact age", value=True)
-        if exact_age_filter:
-            filter_age = car_age
-            st.info(f"Will filter by exact age: {filter_age} years")
-        else:
-            filter_age = None
+    st.info(f"**Filter Criteria:**")
+    st.info(f"• **Brand:** {brand_filter.title()}")
+    st.info(f"• **Model:** {model_filter.title()}")
+    st.info(f"• **Emission Class:** {emission_class}")
+    st.info("• **No mileage or age filters applied**")
     
-    with col2:
-        st.markdown("**Filter Preview:**")
-        brand_from_type = car_type.split()[0]
-        model_from_type = " ".join(car_type.split()[1:])
-        st.info(f"**Brand:** {brand_from_type.title()}")
-        st.info(f"**Model:** {model_from_type.title()}")
-        st.info(f"**Emission Class:** {emission_class}")
-        st.info(f"**Car Age:** {car_age} years")
-        if use_mileage_filter and max_mileage:
-            st.info(f"**Maximum Mileage:** ≤ {max_mileage:,} km")
-        
-        # Show what will be filtered
-        filter_criteria = []
-        filter_criteria.append(f"Brand = '{brand_from_type.title()}'")
-        filter_criteria.append(f"Model = '{model_from_type.title()}'")
-        filter_criteria.append(f"Emission Class = '{emission_class}'")
-        filter_criteria.append(f"Car Age = {car_age} years")
-        if use_mileage_filter and max_mileage:
-            filter_criteria.append(f"Mileage ≤ {max_mileage:,} km")
-        
-        st.markdown("**Filter Criteria:**")
-        for criterion in filter_criteria:
-            st.write(f"• {criterion}")
+    # Apply filters based on user inputs
+    filtered_df = get_filtered_data(
+        brand=brand_filter,
+        model=model_filter,
+        emission_class=emission_class
+    )
     
-    # Add a toggle to enable/disable filtering feature
-    enable_filtering = st.checkbox("Enable CSV filtering feature", value=True)
-    
+    if filtered_df is not None and not filtered_df.empty:
+        st.success(f"✅ Found {len(filtered_df)} matching records")
+        
+        # Display filtered data preview
+        st.markdown("### Preview of Filtered Data")
+        
+        # Display complete dataframe with all features (max 10 rows)
+        st.dataframe(filtered_df.head(10), use_container_width=True)
+        
+        # Show basic statistics
+        st.markdown("### Filtered Data Statistics")
+        stats_col1, stats_col2, stats_col3 = st.columns(3)
+        
+        with stats_col1:
+            st.metric("Total Records", len(filtered_df))
+        
+        with stats_col2:
+            if 'price' in filtered_df.columns:
+                avg_price = filtered_df['price'].mean()
+                st.metric("Average Price", f"€{avg_price:,.2f}")
+        
+        with stats_col3:
+            if 'mileage' in filtered_df.columns:
+                avg_mileage = filtered_df['mileage'].mean()
+                st.metric("Avg Mileage", f"{avg_mileage:,.0f} km")
+        
+        # Create download link
+        st.markdown("---")
+        st.subheader("📥 Download Filtered Data")
+        
+        # Generate filename based on filters
+        filename = f"filtered_{brand_filter}_{model_filter.replace(' ', '_')}_{emission_class.replace(' ', '_')}.csv"
+        
+        # Create download button
+        csv = filtered_df.to_csv(index=False)
+        st.download_button(
+            label="📥 Download Full Filtered CSV",
+            data=csv,
+            file_name=filename,
+            mime="text/csv",
+            help="Download the complete filtered dataset as CSV"
+        )
+        
+    elif filtered_df is not None and filtered_df.empty:
+        st.warning(f"No matching records found for: {brand_filter.title()} {model_filter.title()} with Emission Class: {emission_class}")
+        st.info("Try selecting different criteria.")
+    else:
+        st.error("Could not filter the dataset. Please check if the original dataset is in the correct format.")
 else:
-    enable_filtering = False
     st.warning("CSV filtering is disabled because 'FilterCars.csv' was not found.")
 
 # --------------------------------------------------------
@@ -662,120 +669,26 @@ if st.button("🚀 PREDICT CAR PRICE", type="primary", use_container_width=True)
         
         st.warning(f"**Estimated Price Range:** €{price_range_low:,.2f} - €{price_range_high:,.2f}")
         
-        # --------------------------------------------------------
-        # CSV FILTERING AND DOWNLOAD - FIXED: Only mileage ≤ selected
-        # --------------------------------------------------------
-        
-        if original_dataset_exists and enable_filtering:
-            st.markdown("---")
-            st.subheader("📊 Filtered Dataset")
+        # Show comparison with filtered data average if available
+        if enable_filtering and filtered_df is not None and not filtered_df.empty and 'price' in filtered_df.columns:
+            avg_price = filtered_df['price'].mean()
+            price_diff = ((predicted_price - avg_price) / avg_price) * 100
             
-            with st.spinner("Filtering original dataset..."):
-                # Extract brand and model from car_type
-                brand_filter = car_type.split()[0]
-                model_filter = " ".join(car_type.split()[1:])
-                
-                # Determine max mileage for filtering
-                filter_max_mileage = max_mileage if (use_mileage_filter and max_mileage) else mileage
-                
-                # Apply filters based on user inputs
-                filtered_df = get_filtered_data(
-                    brand=brand_filter,
-                    model=model_filter,
-                    emission_class=emission_class,
-                    car_age=car_age if exact_age_filter else None,
-                    max_mileage=filter_max_mileage  # FIXED: Only max_mileage (≤)
-                )
-                
-                if filtered_df is not None and not filtered_df.empty:
-                    st.success(f"✅ Found {len(filtered_df)} matching records with mileage ≤ {filter_max_mileage:,.0f} km")
-                    
-                    # Display filtered data preview
-                    st.markdown("**Preview of filtered data:**")
-                    
-                    # Select important columns to display
-                    display_cols = []
-                    if 'general_information__brand' in filtered_df.columns:
-                        display_cols.append('general_information__brand')
-                    if 'general_information__model' in filtered_df.columns:
-                        display_cols.append('general_information__model')
-                    if 'mileage' in filtered_df.columns:
-                        display_cols.append('mileage')
-                    if 'price' in filtered_df.columns:
-                        display_cols.append('price')
-                    if 'car_age' in filtered_df.columns:
-                        display_cols.append('car_age')
-                    if 'energy_consumption__emission_class' in filtered_df.columns:
-                        display_cols.append('energy_consumption__emission_class')
-                    
-                    if display_cols:
-                        st.dataframe(filtered_df[display_cols].head(10), use_container_width=True)
-                    else:
-                        st.dataframe(filtered_df.head(10), use_container_width=True)
-                    
-                    # Show basic statistics
-                    st.markdown("**Filtered Data Statistics:**")
-                    stats_col1, stats_col2, stats_col3, stats_col4 = st.columns(4)
-                    
-                    with stats_col1:
-                        st.metric("Total Records", len(filtered_df))
-                    
-                    with stats_col2:
-                        if 'price' in filtered_df.columns:
-                            avg_price = filtered_df['price'].mean()
-                            st.metric("Average Price", f"€{avg_price:,.2f}")
-                    
-                    with stats_col3:
-                        if 'mileage' in filtered_df.columns:
-                            avg_mileage = filtered_df['mileage'].mean()
-                            st.metric("Avg Mileage", f"{avg_mileage:,.0f} km")
-                    
-                    with stats_col4:
-                        if 'price' in filtered_df.columns:
-                            min_price = filtered_df['price'].min()
-                            max_price = filtered_df['price'].max()
-                            st.metric("Price Range", f"€{min_price:,.0f}-{max_price:,.0f}")
-                    
-                    # Show comparison with predicted price
-                    if 'price' in filtered_df.columns:
-                        st.markdown("**Price Comparison:**")
-                        comparison_col1, comparison_col2, comparison_col3 = st.columns(3)
-                        
-                        with comparison_col1:
-                            predicted_diff = ((predicted_price - filtered_df['price'].mean()) / filtered_df['price'].mean()) * 100
-                            st.metric("Predicted vs Avg", f"{predicted_diff:+.1f}%")
-                        
-                        with comparison_col2:
-                            below_avg_count = (filtered_df['price'] < predicted_price).sum()
-                            st.metric("Below Predicted", f"{below_avg_count}")
-                        
-                        with comparison_col3:
-                            above_avg_count = (filtered_df['price'] >= predicted_price).sum()
-                            st.metric("Above Predicted", f"{above_avg_count}")
-                    
-                    # Create download link
-                    st.markdown("---")
-                    st.subheader("📥 Download Filtered Data")
-                    
-                    # Generate filename based on filters
-                    filename = f"filtered_{brand_filter}_{model_filter.replace(' ', '_')}_{emission_class.replace(' ', '_')}_age{car_age}_mileage_to_{filter_max_mileage}.csv"
-                    
-                    # Create download button
-                    csv = filtered_df.to_csv(index=False)
-                    st.download_button(
-                        label="📥 Download CSV",
-                        data=csv,
-                        file_name=filename,
-                        mime="text/csv",
-                        help="Download the filtered dataset as CSV"
-                    )
-                    
-                elif filtered_df is not None and filtered_df.empty:
-                    st.warning(f"No matching records found with mileage ≤ {filter_max_mileage:,.0f} km")
-                    st.info("Try increasing the maximum mileage or relaxing other filter criteria.")
-                else:
-                    st.error("Could not filter the dataset. Please check if the original dataset is in the correct format.")
-
+            st.markdown("---")
+            st.subheader("📊 Comparison with Filtered Dataset")
+            comp_col1, comp_col2, comp_col3 = st.columns(3)
+            
+            with comp_col1:
+                st.metric("Filtered Dataset Avg", f"€{avg_price:,.2f}")
+            
+            with comp_col2:
+                st.metric("Predicted Price", f"€{predicted_price:,.2f}")
+            
+            with comp_col3:
+                st.metric("Difference", f"{price_diff:+.1f}%", 
+                         delta=f"{price_diff:+.1f}%", 
+                         delta_color="normal" if abs(price_diff) < 10 else "inverse")
+        
         # Save prediction to file
         prediction_data = {
             'car_type': car_type,
@@ -822,7 +735,7 @@ st.markdown(
     <div style='text-align: center; color: gray;'>
         <p>🚗 Car Price Prediction System • Using CatBoost Model</p>
         <p><small>Features engineered with one-hot encoding</small></p>
-        <p><small>📊 CSV Filtering: {'Enabled' if original_dataset_exists and enable_filtering else 'Disabled'}</small></p>
+        <p><small>📊 CSV Filtering: {'Enabled' if enable_filtering else 'Disabled'}</small></p>
     </div>
     """,
     unsafe_allow_html=True
