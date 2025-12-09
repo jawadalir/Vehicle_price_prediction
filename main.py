@@ -55,10 +55,10 @@ def parse_year(year_input):
 
     return np.nan
 
-def get_filtered_data(brand, model, emission_class, original_dataset_path="FilterCars.csv"):
+def get_filtered_data(brand, model, emission_class, mileage_limit, car_age, original_dataset_path="FilterCars.csv"):
     """
-    Filter the original dataset based on brand, model, and emission class only.
-    Returns filtered DataFrame.
+    Filter the original dataset based on user inputs and return filtered DataFrame.
+    Now includes mileage (≤) and age (±1 year) filters.
     """
     try:
         # Check if original dataset exists
@@ -69,7 +69,7 @@ def get_filtered_data(brand, model, emission_class, original_dataset_path="Filte
         # Load original dataset
         df = pd.read_csv(original_dataset_path)
         
-        # Apply filters - only brand, model, and emission class
+        # Apply filters
         # Filter by brand
         if brand:
             df = df[df['general_information__brand'].str.lower() == brand.lower()]
@@ -81,6 +81,19 @@ def get_filtered_data(brand, model, emission_class, original_dataset_path="Filte
         # Filter by emission class
         if emission_class:
             df = df[df['energy_consumption__emission_class'].str.lower() == emission_class.lower()]
+        
+        # Filter by mileage (≤ selected mileage)
+        if mileage_limit is not None:
+            df = df[df['mileage'] <= mileage_limit]
+        
+        # Filter by car age (±1 year from current year minus vehicle year)
+        if car_age is not None:
+            # Calculate age range (±1 year)
+            min_age = max(0, car_age - 1)  # Minimum age (0 if car_age is 0)
+            max_age = car_age + 1  # Maximum age
+            
+            # Apply age filter
+            df = df[(df['car_age'] >= min_age) & (df['car_age'] <= max_age)]
         
         return df
     
@@ -346,15 +359,16 @@ with col1:
 with col2:
     mileage = st.number_input("Mileage (in km):", min_value=100, max_value=900000, value=50000, step=1000)
 
-# Parse year
+# Parse year - UPDATED: Subtract from 2026 for age calculation
 vehicle_year = None
 if year_input:
     vehicle_year = parse_year(year_input)
     if not pd.isna(vehicle_year):
-        current_year = datetime.now().year
+        # Calculate car age: 2026 minus vehicle year
+        current_year = 2026
         car_age = current_year - vehicle_year
         if 0 <= car_age <= 50:
-            st.info(f"✓ Year: {int(vehicle_year)} (Age: {car_age} years)")
+            st.info(f"✓ Year: {int(vehicle_year)} (Age: {car_age} years, calculated from 2026)")
         else:
             st.error(f"Car age {car_age} years seems unrealistic (should be 0-50 years)")
             st.stop()
@@ -505,21 +519,25 @@ if enable_filtering:
     brand_filter = car_type.split()[0]
     model_filter = " ".join(car_type.split()[1:])
     
-    st.info(f"**Filter Criteria:**")
-    st.info(f"• **Brand:** {brand_filter.title()}")
-    st.info(f"• **Model:** {model_filter.title()}")
-    st.info(f"• **Emission Class:** {emission_class}")
-    st.info("• **No mileage or age filters applied**")
-    
     # Apply filters based on user inputs
     filtered_df = get_filtered_data(
         brand=brand_filter,
         model=model_filter,
-        emission_class=emission_class
+        emission_class=emission_class,
+        mileage_limit=mileage,  # Use selected mileage as limit
+        car_age=car_age  # Use calculated car age
     )
     
     if filtered_df is not None and not filtered_df.empty:
         st.success(f"✅ Found {len(filtered_df)} matching records")
+        
+        # Display filter criteria
+        st.info(f"**Filter Criteria:**")
+        st.info(f"• **Brand:** {brand_filter.title()}")
+        st.info(f"• **Model:** {model_filter.title()}")
+        st.info(f"• **Emission Class:** {emission_class}")
+        st.info(f"• **Maximum Mileage:** ≤ {mileage:,} km")
+        st.info(f"• **Car Age:** {car_age} years (±1 year)")
         
         # Display filtered data preview
         st.markdown("### Preview of Filtered Data")
@@ -529,7 +547,7 @@ if enable_filtering:
         
         # Show basic statistics
         st.markdown("### Filtered Data Statistics")
-        stats_col1, stats_col2, stats_col3 = st.columns(3)
+        stats_col1, stats_col2, stats_col3, stats_col4 = st.columns(4)
         
         with stats_col1:
             st.metric("Total Records", len(filtered_df))
@@ -544,12 +562,23 @@ if enable_filtering:
                 avg_mileage = filtered_df['mileage'].mean()
                 st.metric("Avg Mileage", f"{avg_mileage:,.0f} km")
         
+        with stats_col4:
+            if 'car_age' in filtered_df.columns:
+                avg_age = filtered_df['car_age'].mean()
+                st.metric("Avg Age", f"{avg_age:.1f} years")
+        
+        # Age distribution info
+        if 'car_age' in filtered_df.columns:
+            age_min = filtered_df['car_age'].min()
+            age_max = filtered_df['car_age'].max()
+            st.info(f"Age range in filtered data: {age_min} to {age_max} years")
+        
         # Create download link
         st.markdown("---")
         st.subheader("📥 Download Filtered Data")
         
         # Generate filename based on filters
-        filename = f"filtered_{brand_filter}_{model_filter.replace(' ', '_')}_{emission_class.replace(' ', '_')}.csv"
+        filename = f"filtered_{brand_filter}_{model_filter.replace(' ', '_')}_{emission_class.replace(' ', '_')}_mileage_to_{mileage}_age_{car_age}_±1.csv"
         
         # Create download button
         csv = filtered_df.to_csv(index=False)
@@ -562,8 +591,13 @@ if enable_filtering:
         )
         
     elif filtered_df is not None and filtered_df.empty:
-        st.warning(f"No matching records found for: {brand_filter.title()} {model_filter.title()} with Emission Class: {emission_class}")
-        st.info("Try selecting different criteria.")
+        st.warning(f"No matching records found for:")
+        st.warning(f"- Brand: {brand_filter.title()}")
+        st.warning(f"- Model: {model_filter.title()}")
+        st.warning(f"- Emission Class: {emission_class}")
+        st.warning(f"- Maximum Mileage: ≤ {mileage:,} km")
+        st.warning(f"- Car Age: {car_age} years (±1 year)")
+        st.info("Try relaxing the mileage or age filters.")
     else:
         st.error("Could not filter the dataset. Please check if the original dataset is in the correct format.")
 else:
@@ -582,13 +616,13 @@ if st.button("🚀 PREDICT CAR PRICE", type="primary", use_container_width=True)
     
     with st.spinner("Processing input data..."):
         
-        # Prepare car data
+        # Prepare car data - UPDATED: Use car_age calculated from 2026
         car_data = {
             'car_type': car_type,
             'mileage': mileage,
             'co2_emissions': co2_emissions,
             'warranty': warranty,
-            'car_age': car_age,
+            'car_age': car_age,  # This is already calculated as 2026 - vehicle_year
             'emission_class': emission_class,
             'fuel_type': fuel_type,
             'transmission': transmission
@@ -639,7 +673,7 @@ if st.button("🚀 PREDICT CAR PRICE", type="primary", use_container_width=True)
             st.write(f"**Car Type:** {brand_from_type} {model_from_type}")
             st.write(f"**Mean Market Price:** €{mean_price_mapping.get(car_type, 0):,.2f}")
             st.write(f"**Manufacturing Year:** {int(vehicle_year)}")
-            st.write(f"**Vehicle Age:** {int(car_age)} years")
+            st.write(f"**Vehicle Age (2026 - Year):** {int(car_age)} years")
             st.write(f"**Mileage:** {mileage:,.0f} km")
             
         with details_col2:
@@ -688,6 +722,12 @@ if st.button("🚀 PREDICT CAR PRICE", type="primary", use_container_width=True)
                 st.metric("Difference", f"{price_diff:+.1f}%", 
                          delta=f"{price_diff:+.1f}%", 
                          delta_color="normal" if abs(price_diff) < 10 else "inverse")
+            
+            # Show filtered dataset age range
+            if 'car_age' in filtered_df.columns:
+                age_min = filtered_df['car_age'].min()
+                age_max = filtered_df['car_age'].max()
+                st.info(f"Filtered dataset age range: {age_min} to {age_max} years (±1 year from {car_age} years)")
         
         # Save prediction to file
         prediction_data = {
@@ -703,6 +743,7 @@ if st.button("🚀 PREDICT CAR PRICE", type="primary", use_container_width=True)
             'co2_emissions_gkm': float(co2_emissions),
             'predicted_price_eur': float(predicted_price),
             'mean_market_price': float(mean_price_mapping.get(car_type, 0)),
+            'vehicle_age_2026_minus_year': int(car_age),
             'model_type': 'CatBoost',
             'prediction_timestamp': datetime.now().isoformat()
         }
@@ -736,6 +777,8 @@ st.markdown(
         <p>🚗 Car Price Prediction System • Using CatBoost Model</p>
         <p><small>Features engineered with one-hot encoding</small></p>
         <p><small>📊 CSV Filtering: {'Enabled' if enable_filtering else 'Disabled'}</small></p>
+        <p><small>🚨 Age calculation: 2026 - Manufacturing Year</small></p>
+        <p><small>📈 Filters: Mileage ≤ selected, Age ±1 year</small></p>
     </div>
     """,
     unsafe_allow_html=True
